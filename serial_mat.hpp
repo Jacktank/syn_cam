@@ -8,33 +8,79 @@
 #include <boost/archive/binary_oarchive.hpp>
 #include <opencv2/opencv.hpp>
 
+
+class Mat_fat 
+{
+public:
+		int id_cam;
+		long long time_stamp;
+		cv::Mat frame;
+};
+/*
+public:
+		int Get_CameraID()
+		{
+				return id_cam;
+		}
+		long long Get_frameStamp()
+		{
+				return time_stamp;
+		}
+
+		void Set_CameraID(int& no_cam)
+		{
+				id_cam = no_cam;
+		}
+		void Set_frameStamp(long long& time)
+		{
+				time_stamp = time;
+		}
+
+		void Set_ImageData()
+		{
+				frame = mat;
+		}
+
+}
+*/
+
 using namespace std;
 namespace boost {
 		namespace serialization {
 				template<class Archive>
-        void serialize(Archive &ar, cv::Mat& mat, const unsigned int)
+        void serialize(Archive &ar, Mat_fat& mat_f, const unsigned int)
         {
             int cols, rows, type;
             bool continuous;
 
+						int id_cam;
+						long long time_stamp;
+
             if (Archive::is_saving::value) {
-                cols = mat.cols; rows = mat.rows; type = mat.type();
-                continuous = mat.isContinuous();
+                cols = mat_f.frame.cols; rows = mat_f.frame.rows; type = mat_f.frame.type();
+
+								id_cam = mat_f.id_cam;
+								time_stamp = mat_f.time_stamp;
+
+                continuous = mat_f.frame.isContinuous();
             }
 
-            ar & cols & rows & type & continuous;
+            ar & cols & rows & type & continuous & id_cam & time_stamp ;
 
             if (Archive::is_loading::value)
-                mat.create(rows, cols, type);
-
+						{
+								mat_f.id_cam = id_cam;
+								mat_f.time_stamp = time_stamp;
+                mat_f.frame.create(rows, cols, type);
+						}
             if (continuous) {
-                const unsigned int data_size = rows * cols * mat.elemSize();
-                ar & boost::serialization::make_array(mat.ptr(), data_size);
+                const unsigned int data_size = rows * cols * mat_f.frame.elemSize();
+                ar & boost::serialization::make_array(mat_f.frame.ptr(), data_size);
             }
             else {
-                const unsigned int row_size = cols*mat.elemSize();
+                const unsigned int row_size = cols*mat_f.frame.elemSize();
                 for (int i = 0; i < rows; i++) {
-                    ar & boost::serialization::make_array(mat.ptr(i), row_size);
+                    ar & boost::serialization::make_array(mat_f.frame.ptr(i), row_size);
                 }
             }
 

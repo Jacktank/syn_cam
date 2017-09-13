@@ -8,6 +8,7 @@
 
 int main (int argc, char ** argv)
 {
+		s_version();
 		int status, no_cam;
 		for(no_cam=1;no_cam<8;no_cam++)
 		{
@@ -21,7 +22,7 @@ int main (int argc, char ** argv)
 				std::cout<<"failed ..."<<std::endl;
       //error
     }
-    else if (status == 0) //每个子进程都会执行的代码
+    else if (status == 0) 
     {
 				zmq::context_t context(1);
 				zmq::socket_t sender(context,ZMQ_PUSH);
@@ -53,6 +54,10 @@ int main (int argc, char ** argv)
 
 				int count = 0;
 				cv::Mat frame;
+				Mat_fat mat_f;
+
+				mat_f.id_cam = no_cam;
+				
 				while (true)
 				{	
 						vcap>>frame;
@@ -69,9 +74,12 @@ int main (int argc, char ** argv)
 		       	if(key == 'q')
 		       		break;  
 
+						mat_f.time_stamp = count;
+						mat_f.frame = frame;
+
 						std::ostringstream os;  
 						boost::archive::binary_oarchive oa(os);  
-						oa << frame;//序列化到一个ostringstream里面  
+						oa << mat_f;//序列化到一个ostringstream里面  
 						
 						std::string content = os.str();//content保存了序列化后的数据。  
 
@@ -79,6 +87,8 @@ int main (int argc, char ** argv)
 						memcpy(message.data(), content.c_str() , content.size());
 						//printf("%s",message.data());
 						sender.send(message);
+			
+						count++;
 				}
 				
 				sleep (1);    
@@ -90,31 +100,22 @@ int main (int argc, char ** argv)
 				zmq::socket_t receiver(context,ZMQ_PULL);
 				receiver.bind("ipc:///tmp/0");
 				zmq::message_t message;
-				
-				//std::ofstream log("log.txt");
-				bool b_beg = true;
+			
+				Mat_fat mat_f;
+				std::ofstream log("log.txt");
 				while (true)
 				{
-					
 						receiver.recv(&message);
 						std::string smessage(static_cast<char*>(message.data()), message.size());
 						//std::cout<<smessage<<std::endl;
-				
-						if(b_beg)
-						{
-								cv::Mat tmp;
-								std::istringstream is(smessage); 
-								boost::archive::binary_iarchive ia(is);  
-								ia >> tmp;
-
-								cv::imwrite("111.jpg",tmp);
-
-								b_beg = false;
-						}
-					//	log<<smessage;
+						:td::istringstream is(smessage); 
+						boost::archive::binary_iarchive ia(is);  
+						ia >> mat_f;
+						//log<<mat_f.id_cam<<":"<<mat_f.time_stamp;
+						std::cout<<mat_f.id_cam<<":"<<mat_f.time_stamp<<std::endl;
 				}
 
-				//log.close();
+				log.close();
 
 				std::cout<<" parent process ..."<<std::endl;
       //parent process
