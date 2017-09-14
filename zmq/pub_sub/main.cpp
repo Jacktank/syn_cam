@@ -5,39 +5,54 @@
 #include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/prctl.h>
+#include <signal.h>  
 #include <time.h>
 #include "serialization.hpp"
 
-#define NUM_CAM 7 
+#define NUM_CAM 2 
 
 #define within(num) (int) ((float) num * random () / (RAND_MAX + 1.0))
 
 int main (int argc, char ** argv)
 {
 		int status, no_cam;
-		for(no_cam=1;no_cam<NUM_CAM+1;no_cam++)
+		for(no_cam=0;no_cam<NUM_CAM;no_cam++)
 		{
 				status = fork();
 				if(status == 0 | status == -1)
 					break;
 		}
 
-	  if (status == -1)
+		std::vector<std::string> vstr;
+		vstr.push_back(std::string("rtsp://admin:12345goccia@10.0.0.104:554//Streaming/Channels/1"));
+		vstr.push_back(std::string("rtsp://admin:12345goccia@10.0.0.106:554//Streaming/Channels/1"));
+		//vstr.push_back(std::string("rtsp://admin:12345goccia@10.0.0.104:554//Streaming/Channels/1"));
+		//vstr.push_back(std::string("rtsp://admin:12345goccia@10.0.0.104:554//Streaming/Channels/1"));
+		//vstr.push_back(std::string("rtsp://admin:12345goccia@10.0.0.104:554//Streaming/Channels/1"));
+		//vstr.push_back(std::string("rtsp://admin:12345goccia@10.0.0.104:554//Streaming/Channels/1"));
+		//vstr.push_back(std::string("rtsp://admin:12345goccia@10.0.0.104:554//Streaming/Channels/1"));
+
+		std::vector<cv::Rect> vrc;
+    vrc.push_back(cv::Rect(352,52,40,50));//#104
+		vrc.push_back(cv::Rect(562,256,40,50));//#106
+   //vrc.push_back(cv::Rect(302,150,40,40));//#101
+	 //vrc.push_back(cv::Rect(512,242,40,50));//#102
+   //vrc.push_back(cv::Rect(100,100,50,50));//#103
+   //vrc.push_back(cv::Rect(100,100,50,50));//#105
+   //vrc.push_back(cv::Rect(100,100,50,50));//#107
+
+	 if (status == -1)
     {
 				std::cout<<"failed ..."<<std::endl;
       //error
     }
     else if (status == 0) //每个子进程都会执行的代码
     {
-    		std::vector<cv::Rect> vrc;
-        vrc.push_back(cv::Rect(100,100,50,50));//#101
-        vrc.push_back(cv::Rect(100,100,50,50));//#102
-        vrc.push_back(cv::Rect(100,100,50,50));//#103
-    		vrc.push_back(cv::Rect(500,130,20,20));//#104
-        vrc.push_back(cv::Rect(320,100,20,20));//#105
-        vrc.push_back(cv::Rect(100,100,50,50));//#106
-        vrc.push_back(cv::Rect(100,100,50,50));//#107
-    		cv::Rect ret = vrc[no_cam - 1];
+    		    		
+				prctl(PR_SET_PDEATHSIG, SIGKILL);
+
+				cv::Rect ret = vrc[no_cam];
 
 				zmq::context_t context (1);
 		 	  zmq::socket_t subscriber_cmd (context, ZMQ_SUB);
@@ -51,21 +66,13 @@ int main (int argc, char ** argv)
 		  	const char *filter = (argc > 1)? argv [1]: "msg";
 			  subscriber_cmd.setsockopt(ZMQ_SUBSCRIBE, filter, strlen (filter));
 
-				std::stringstream sttr;
-    		if(no_cam != 3)
-    			sttr<<"rtsp://admin:12345goccia@10.0.0.10"<< no_cam <<":554//Streaming/Channels/1";
-    		else
-    			sttr<<"rtsp://admin:123456goccia@10.0.0.10"<< no_cam <<":554//Streaming/Channels/1";
-    		
-    		std::string str;
-    		sttr>>str;
-    		std::cout<< str <<std::endl;
-    		cv::VideoCapture *p_cap;
+    		cv::VideoCapture *p_cap = NULL;
 	
 				int count = 0;
 				int count_change_time = 0;
 				int begin_stamp = 0;
-				cv::Mat frame, gray, gray_clone, delt_Mat;
+				int pixel_value_thresh = 230;
+				cv::Mat frame, gray, gray_last, delt_Mat;
 				Mat_fat mat_f;
 				mat_f.id_cam = no_cam;
 			
@@ -88,6 +95,7 @@ int main (int argc, char ** argv)
 								else
 								{
 
+										std::cout<<"begin sys..."<<std::endl;
 										Cams_Status status;		
 
 										status.id_cam = no_cam;
@@ -105,12 +113,14 @@ int main (int argc, char ** argv)
 										b_resys = false;
 
 										//p_cap->release();
-										p_cap = new cv::VideoCapture(str);
+										p_cap = new cv::VideoCapture(vstr[no_cam]);
 										if(!p_cap->isOpened())  // check if we succeeded
 										{
 												std::cout<<"error:fail to load camera "<<no_cam<<std::endl;
 												return -1;
 										}
+
+										std::cout<<p_cap->get(CV_CAP_PROP_FPS)<<std::endl;
 
 										count = 0;
 										count_change_time = 0;
@@ -121,7 +131,7 @@ int main (int argc, char ** argv)
 						}
 						else
 						{
-								p_cap.read(frame);
+								p_cap->read(frame);
 								if(frame.empty())
 								{
 										std::cout<<"fail to get "<< no_cam <<"th image..."<<std::endl;
@@ -130,7 +140,7 @@ int main (int argc, char ** argv)
 		
 								count++;
 		
-								double msec = p_cap->get(CV_CAP_PROP_POS_MSEC);
+								double frame_stamp = p_cap->get(CV_CAP_PROP_POS_FRAMES);
 								//cv::resize(frame,tmp,cv::Size(),ratio,ratio,CV_INTER_LINEAR);
 								//cv::rectangle(frame,ret,cv::Scalar(255,0,0),2);
 
@@ -143,7 +153,7 @@ int main (int argc, char ** argv)
 		              	
 										cv::cvtColor(tmp_ret, gray, CV_RGB2GRAY);
 
-		              	if(msec == 0)
+		              	if(frame_stamp == 0)
 		              		gray_last = gray.clone();
 		              	delt_Mat = cv::abs(gray - gray_last);
 
@@ -159,17 +169,17 @@ int main (int argc, char ** argv)
 												if(count_change_time == 2)
 												{
 														b_syned = true;
-														begin_stamp = msec;
+														begin_stamp = frame_stamp;
 														std::cout<<"succeed to syn the cam "<<no_cam<<std::endl;
 												}
 												std::stringstream sttr, sttr2;
 		              			std::string str, str2;
-		              			sttr<<"cam_"<<no_cam<<"_newframe_"<<count<<".jpg";
-		              			sttr2<<"cam_"<<no_cam<<"_oldframe_"<<count<<".jpg";
+		              			sttr<<"cam_"<<no_cam<<"_newframe_"<<frame_stamp<<".jpg";
+		              			sttr2<<"cam_"<<no_cam<<"_oldframe_"<<frame_stamp<<".jpg";
 		              			sttr>>str;	
 		              			sttr2>>str2;
 
-		              			std::cout<<"Process No:"<<id_cam<<" Frame stamp:"<<msec<<" no: "<<count<<" MaxValue: "<<MaxValue<<std::endl;
+		              			std::cout<<"Process No:"<<no_cam<<" Frame stamp:"<<frame_stamp<<" no: "<<count<<" MaxValue: "<<MaxValue<<std::endl;
 		              			cv::imwrite(str,gray);
 		              			cv::imwrite(str2,gray_last);	
 		              	}
@@ -180,19 +190,20 @@ int main (int argc, char ** argv)
 								else
 								{
 									
-					        	mat_f.time_stamp = msec - begin_stamp;
+					        	mat_f.time_stamp = frame_stamp - begin_stamp;
 					        	mat_f.frame = frame;
 
 					        	std::ostringstream os;  
 					        	boost::archive::binary_oarchive oa(os);  
 					        	oa << mat_f;//序列化到一个ostringstream里面  
 					        	
+									 std::cout<<__LINE__<<std::endl;
 					        	std::string content = os.str();//content保存了序列化后的数据。  
 
 					        	zmq::message_t message(content.size());
 					        	memcpy(message.data(), content.c_str() , content.size());
 					        	//printf("%s",message.data());
-					        	sender.send(message);
+					        	sender_data.send(message);
 								}					
 						}
 
@@ -218,15 +229,15 @@ int main (int argc, char ** argv)
 					 { receiver_data, 0, ZMQ_POLLIN, 0 }
 			 };
 		
+			 zmq::message_t message_poll;
+
 			 do
 			 {
 					 zmq::message_t message(7);
 					 memcpy(message.data(), "msg_syn", 7); 
-					
+								 
 					 publisher_cmd.send(message); 
-					 std::cout<<__LINE__<<std::endl;
-					 
-					 zmq::message_t message_poll;
+					 					 
 					 zmq::poll (&items [0], 2, 1);
 					 
 					 if (items [0].revents & ZMQ_POLLIN)
@@ -249,10 +260,10 @@ int main (int argc, char ** argv)
 
 									 std::cout<<__LINE__<<std::endl;
 
-									 bool flag = (flag_preFor_sys & (1 << (status.id_cam-1)))>0 ? true:false;
+									 bool flag = (flag_preFor_sys & (1 << (status.id_cam)))>0 ? true:false;
 									 if(!flag)
 									 {
-											 flag_preFor_sys |= (1 << (status.id_cam-1));
+											 flag_preFor_sys |= (1 << (status.id_cam));
 
 											 if( flag_preFor_sys == ((1 << NUM_CAM) - 1) )		
 											 {
@@ -271,15 +282,19 @@ int main (int argc, char ** argv)
 					
 			 Mat_fat mat_f;
 
+			 int s = 0;
+
 			 while (1) {
 					 zmq::message_t message;
-					 zmq::poll (&items [0], 2, 1);
         
+					 zmq::poll (&items [0], 2, 1);
 					 if (items [0].revents & ZMQ_POLLIN)
 					 {
 		
 							 receiver_status.recv(&message);
 							 //  Process task
+							 
+							 std::cout<<__LINE__<<std::endl;
 							 
 							 std::string smessage(static_cast<char*>(message.data()), message.size());
 
@@ -291,13 +306,14 @@ int main (int argc, char ** argv)
 					 }
 
 					 if (items [1].revents & ZMQ_POLLIN) {
-
-							 static int s = 0;
-
+							
 							 receiver_data.recv(&message);
 							 //  Process weather update
 							 
-					     std::string smessage(static_cast<char*>(message.data()), message.size());
+							 std::cout<<__LINE__<<std::endl;
+					     
+							 std::string smessage(static_cast<char*>(message.data()), message.size());
+							 std::cout<<"message.size:"<<message.size()<<std::endl;
 					     //std::cout<<smessage<<std::endl;
 					     std::istringstream is(smessage); 
 					     boost::archive::binary_iarchive ia(is);  
@@ -307,13 +323,13 @@ int main (int argc, char ** argv)
 
 							 std::stringstream sttr;
 		           std::string str;
-		           sttr<<"cam_"<<no_cam<<"_frame_"<<s<<".jpg";
+		           sttr<<"cam_"<<mat_f.id_cam<<"_frame_"<<mat_f.time_stamp<<".jpg";
 		           sttr>>str;	
 
-		           cv::imwrite(str,gray);
-							 
+		           cv::imwrite(str,mat_f.frame);
+
 							 s++;
-							 if(s>200)
+							 if(s>330)
 								 break;
 			     } 
 					 
